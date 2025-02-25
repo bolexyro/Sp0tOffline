@@ -1,14 +1,13 @@
 # https://developer.spotify.com/documentation/web-api/tutorials/code-flow
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 import os
 from dotenv import load_dotenv
-import requests
 
-from models import Playlist, SpotifyTokenResponse, SpotifyUser
-from utils import encode_to_base64, generate_random_string
+from services.spotify import get_access_token, get_liked_songs, get_profile_details, get_user_playlists
+from utils.common import generate_random_string, generate_spotify_redirecturl
 
 load_dotenv()
 
@@ -16,7 +15,6 @@ CLIENT_ID = os.getenv('CLIENT_ID')
 CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 FASTAPI_AUTH_SECRET_KEY = os.getenv('FASTAPI_AUTH_SECRET_KEY')
 
-redirect_uri = "http://127.0.0.1:8000/auth/callback"
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=FASTAPI_AUTH_SECRET_KEY)
@@ -24,14 +22,17 @@ app.add_middleware(SessionMiddleware, secret_key=FASTAPI_AUTH_SECRET_KEY)
 
 @app.get('/login')
 def login(request: Request):
-    scope = 'playlist-read-private playlist-read-collaborative user-read-private user-read-email'
+    redirect_uri = request.url_for('auth_callback_route')
+    scope = 'playlist-read-private playlist-read-collaborative user-read-private user-read-email user-library-read'
     state = generate_random_string()
     request.session['state'] = state
-    return RedirectResponse(f'https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={redirect_uri}&state={state}&scope={scope}')
+    return RedirectResponse(generate_spotify_redirecturl(CLIENT_ID, redirect_uri, scope, state))
 
 
-@app.get(path='/auth/callback')
-def auth_callback(request: Request):
+@app.get(path='/auth/callback', name='auth_callback_route')
+async def auth_callback(request: Request):
+    redirect_uri = request.url_for('auth_callback_route')
+
     session_state = request.session.get('state', 'not_valid')
     query_param_state = request.query_params.get("state")
 
@@ -44,37 +45,46 @@ def auth_callback(request: Request):
         # TODO redirect them to an error page
         raise HTTPException(
             status_code=400, detail=f"OAuth 2.0 Error: {error}")
+    spotify_token_response = get_access_token(
+        authorization_code=request.query_params.get("code"), redirect_uri=redirect_uri)
 
-    authorization_code = request.query_params.get("code")
-    form = {
-        "code": authorization_code,
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code"
-    }
-    headers = {
-        'content-type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + encode_to_base64(f"{CLIENT_ID}:{CLIENT_SECRET}")
-    }
-    response = requests.post(
-        url="https://accounts.spotify.com/api/token", data=form, headers=headers)
-    spotify_token_response = SpotifyTokenResponse(**response.json())
-
-    user = get_profile_details(
-        access_token=spotify_token_response.access_token)
-    playlists = get_user_playlists(
-        access_token=spotify_token_response.access_token, user_id=user.id)
-
+    # user = get_profile_details(
+    #     access_token=spotify_token_response.access_token)
+    # playlists = get_user_playlists(
+    #     access_token=spotify_token_response.access_token, user_id=user.id)
+    return get_liked_songs(access_token=spotify_token_response.access_token)
     return [{"name": playlist.name} for playlist in playlists]
 
 
-def get_profile_details(access_token: str) -> SpotifyUser:
-    response = requests.get("https://api.spotify.com/v1/me",
-                            headers={"Authorization": f"Bearer {access_token}"})
-    return SpotifyUser(**response.json())
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast(self, message: str):
+        print(self.active_connections)
+        for connection in self.active_connections:
+            await connection.send_text(message)
 
 
-def get_user_playlists(access_token: str, user_id: str) -> list[Playlist]:
-    # TODO make use of the offset and range
-    response = requests.get(f"https://api.spotify.com/v1/users/{user_id}/playlists", headers={
-                            "Authorization": f"Bearer {access_token}"})
-    return [Playlist(**playlist) for playlist in response.json()["items"]]
+manager = ConnectionManager()
+
+
+@app.websocket("/ws/token")
+async def token_websocket(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        print("client disconnected")

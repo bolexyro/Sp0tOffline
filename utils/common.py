@@ -17,3 +17,7 @@ def encode_to_base64(input_string):
 
     # Convert bytes back to string
     return base64_bytes.decode('utf-8')
+
+
+def generate_spotify_redirecturl(client_id: str, redirect_uri: str, scope: str, state):
+    return f'https://accounts.spotify.com/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&state={state}&scope={scope}'
