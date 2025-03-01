@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Annotated
+from typing import Annotated, Generic, TypeVar
 
 
 class SpotifyTokenResponse(BaseModel):
@@ -53,3 +53,16 @@ class Album(BaseModel):
 
 class PlaylistTrack(BaseModel):
     pass
+
+
+class LoginResponse(BaseModel):
+    user: SpotifyUser
+    token_data: SpotifyTokenResponse
+
+
+T = TypeVar("T")
+
+
+class ApiResponse(BaseModel, Generic[T]):
+    status_code: int
+    data: T

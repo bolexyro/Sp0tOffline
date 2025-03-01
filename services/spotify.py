@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 import requests
-from schemas import SpotifyTokenResponse, SpotifyUser, Playlist, Track
+from schemas import Album, SpotifyTokenResponse, SpotifyUser, Playlist, Track, ApiResponse
 import os
 from dotenv import load_dotenv
 
@@ -34,11 +34,154 @@ def get_profile_details(access_token: str) -> SpotifyUser:
     return SpotifyUser(**response.json())
 
 
-def get_user_playlists(access_token: str, user_id: str) -> list[Playlist]:
+async def get_user_playlists(access_token: str) -> ApiResponse[list[Playlist]]:
     # TODO make use of the offset and range
-    response = requests.get(f"https://api.spotify.com/v1/users/{user_id}/playlists", headers={
-                            "Authorization": f"Bearer {access_token}"})
-    return [Playlist(**playlist) for playlist in response.json()["items"]]
+    url = "https://api.spotify.com/v1/me/playlists"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    playlists = []
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url=url, headers=headers) as response:
+            if response.status != 200:
+                return ApiResponse[list[Playlist]](status_code=response.status, data=[])
+
+            data = await response.json()
+            next_url = data['next']
+
+            for playlist in data['items']:
+                playlists.append(Playlist(**playlist))
+
+            while next_url:
+                async with session.get(url=next_url, headers=headers) as response:
+                    if response.status != 200:
+                        return ApiResponse[list[Playlist]](status_code=response.status, data=[])
+
+                    data = await response.json()
+                    next_url = data['next']
+                    for playlist in data['items']:
+                        playlists.append(Playlist(**playlist))
+
+    # return [Playlist(**playlist) for playlist in response.json()["items"]]
+    return ApiResponse[list[Playlist]](status_code=200, data=playlists)
+
+
+async def get_liked_songs(access_token: str) -> ApiResponse[list[Track]]:
+    url = 'https://api.spotify.com/v1/me/tracks?limit=50'
+    headers = {
+        'Authorization': 'Bearer ' + access_token
+    }
+    tracks = []
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url=url, headers=headers) as response:
+            if response.status != 200:
+                return ApiResponse[list[Track]](status_code=response.status, data=[])
+
+            data = await response.json()
+            next_url = data['next']
+
+            for track in data['items']:
+                tracks.append(Track(**track['track']))
+            while next_url:
+                async with session.get(url=next_url, headers=headers) as response:
+                    if response.status != 200:
+                        return ApiResponse[list[Track]](status_code=response.status, data=[])
+
+                    data = await response.json()
+                    next_url = data['next']
+                    for track in data['items']:
+                        tracks.append(Track(**track['track']))
+    return ApiResponse[list[Track]](status_code=response.status, data=tracks)
+
+
+async def get_playlist_items(access_token: str, playlist_id: str) -> ApiResponse[list[Track]]:
+    url = f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks'
+    headers = {'Authorization': f'Bearer {access_token}'}
+    tracks = []
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url=url, headers=headers) as response:
+            if response.status != 200:
+                print(await response.text())
+                return ApiResponse[list[Track]](status_code=response.status, data=[])
+
+            data = await response.json()
+            next_url = data['next']
+
+            for track in data['items']:
+                tracks.append(Track(**track['track']))
+
+            while next_url:
+                async with session.get(url=next_url, headers=headers) as response:
+                    if response.status != 200:
+                        return ApiResponse[list[Track]](status_code=response.status, data=[])
+
+                    data = await response.json()
+                    next_url = data['next']
+                    for track in data['items']:
+                        tracks.append(Track(**track['track']))
+    return ApiResponse[list[Track]](status_code=response.status, data=tracks)
+
+
+async def get_user_albums(access_token: str) -> ApiResponse[list[Album]]:
+    url = "https://api.spotify.com/v1/me/albums"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    albums = []
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url=url, headers=headers) as response:
+            if response.status != 200:
+                return ApiResponse[list[Album]](status_code=response.status, data=[])
+
+            data = await response.json()
+            next_url = data['next']
+
+            for item in data['items']:
+                albums.append(Album(**item["album"]))
+
+            while next_url:
+                async with session.get(url=next_url, headers=headers) as response:
+                    if response.status != 200:
+                        return ApiResponse[list[Album]](status_code=response.status, data=[])
+
+                    data = await response.json()
+                    next_url = data['next']
+                    for item in data['items']:
+                        albums.append(Album(**item["album"]))
+
+    return ApiResponse[list[Album]](status_code=200, data=albums)
+
+
+async def get_album_items(access_token: str, album_id: str) -> ApiResponse[list[Track]]:
+    url = f'https://api.spotify.com/v1/albums/{album_id}/tracks'
+    headers = {
+        'Authorization': 'Bearer ' + access_token
+    }
+    tracks = []
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url=url, headers=headers) as response:
+            if response.status != 200:
+                print(await response.text())
+                return ApiResponse[list[Track]](status_code=response.status, data=[])
+
+            data = await response.json()
+            next_url = data['next']
+
+            for track in data['items']:
+                tracks.append(Track(**track))
+
+            while next_url:
+                async with session.get(url=next_url, headers=headers) as response:
+                    if response.status != 200:
+                        return ApiResponse[list[Track]](status_code=response.status, data=[])
+
+                    data = await response.json()
+                    next_url = data['next']
+                    for track in data['items']:
+                        tracks.append(Track(**track))
+    return ApiResponse[list[Track]](status_code=response.status, data=tracks)
 
 
 def refresh_token(refresh_token: str):
@@ -58,42 +201,3 @@ def refresh_token(refresh_token: str):
     if response.status_code == 200:
         return SpotifyTokenResponse(**response.json())
     raise HTTPException(status_code=response.status_code, detail=response.text)
-
-
-async def get_liked_songs(access_token: str):
-    url = 'https://api.spotify.com/v1/me/tracks?limit=50'
-    headers = {
-        'Authorization': 'Bearer ' + access_token
-    }
-    tracks = []
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.get(url=url, headers=headers) as response:
-            data = await response.json()
-            next_url = data['next']
-
-            while next_url:
-                for track in data['items']:
-                    tracks.append(Track(**track['track']))
-
-                async with session.get(url=url, headers=headers) as response:
-                    data = await response.json()
-                    next_url = await response.json()['next']
-
-    # response = requests.get(url=url, headers=headers)
-    # next_url = response.json()['next']
-    # while next_url:
-    #     for track in response.json()['items']:
-    #         tracks.append(Track(**track['track']))
-    #     response = requests.get(url=next_url, headers=headers)
-    #     next_url = response.json()['next']
-    #     print(next_url)
-    # print(len(tracks))
-    return tracks
-
-
-async def get_playlist_items(access_token: str, playlist_id: str):
-    url = f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks'
-    headers = {'Authorization': f'Bearer {access_token}'}
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.get(url=url, headers=headers) as response:
-            pass
