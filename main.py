@@ -7,8 +7,8 @@ from starlette.middleware.sessions import SessionMiddleware
 import os
 from dotenv import load_dotenv
 
-from schemas import LoginResponse
-from services.spotify import get_access_token, get_liked_songs, get_playlist_items, get_profile_details, get_user_albums, get_user_playlists
+from schemas import LoginResponse, TokenRefreshRequest
+from services.spotify import get_access_token, get_album_items, get_liked_songs, get_playlist_items, get_profile_details, get_user_albums, get_user_playlists, refresh_token
 from utils.common import generate_random_string, generate_spotify_redirecturl
 
 load_dotenv()
@@ -139,8 +139,17 @@ async def get_albums(access_token: str = Depends(extract_token)):
 
 @app.get("/albums/{album_id}/tracks")
 async def get_playlist_tracks(album_id: str, access_token: str = Depends(extract_token)):
-    api_response = await get_playlist_items(album_id, access_token)
+    api_response = await get_album_items(album_id, access_token)
     if api_response.status_code == 200:
         return api_response.data
     raise HTTPException(status_code=api_response.status_code,
                         detail="Bad or Expired Token")
+
+
+@app.post("/auth/refresh-token")
+async def refresh_access_token(request: TokenRefreshRequest):
+    api_response = await refresh_token(refresh_token=request.refresh_token)
+    if api_response.status_code == 200:
+        return api_response.data
+    raise HTTPException(status_code=api_response.status_code,
+                        detail=api_response.message)

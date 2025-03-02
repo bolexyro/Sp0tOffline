@@ -2,12 +2,16 @@ from pydantic import BaseModel
 from typing import Annotated, Generic, TypeVar
 
 
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
+
 class SpotifyTokenResponse(BaseModel):
     access_token: str
     token_type: str
     scope: str
     expires_in: int
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class SpotifyUser(BaseModel):
@@ -30,25 +34,25 @@ class Playlist(BaseModel):
     name: str
 
 
+class Album(BaseModel):
+    id: str
+    name: str
+    images: list["SpotifyImage"]
+
+
 class Track(BaseModel):
     id: str
     name: str
     preview_url: Annotated[str | None,
                            'A link to a 30 second preview (MP3 format) of the track.'] = None
     artists: list["Artist"]
-    album: "Album"
+    album: Album | None = None
     duration_ms: int
 
 
 class Artist(BaseModel):
     id: Annotated[str, "Artist spotify id"]
     name: str
-
-
-class Album(BaseModel):
-    id: str
-    name: str
-    images: list["SpotifyImage"]
 
 
 class PlaylistTrack(BaseModel):
@@ -66,3 +70,4 @@ T = TypeVar("T")
 class ApiResponse(BaseModel, Generic[T]):
     status_code: int
     data: T
+    message: str | None = None

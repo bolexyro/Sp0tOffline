@@ -94,7 +94,7 @@ async def get_liked_songs(access_token: str) -> ApiResponse[list[Track]]:
     return ApiResponse[list[Track]](status_code=response.status, data=tracks)
 
 
-async def get_playlist_items(access_token: str, playlist_id: str) -> ApiResponse[list[Track]]:
+async def get_playlist_items(playlist_id: str, access_token: str) -> ApiResponse[list[Track]]:
     url = f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks'
     headers = {'Authorization': f'Bearer {access_token}'}
     tracks = []
@@ -153,7 +153,7 @@ async def get_user_albums(access_token: str) -> ApiResponse[list[Album]]:
     return ApiResponse[list[Album]](status_code=200, data=albums)
 
 
-async def get_album_items(access_token: str, album_id: str) -> ApiResponse[list[Track]]:
+async def get_album_items(album_id: str, access_token: str) -> ApiResponse[list[Track]]:
     url = f'https://api.spotify.com/v1/albums/{album_id}/tracks'
     headers = {
         'Authorization': 'Bearer ' + access_token
@@ -184,20 +184,32 @@ async def get_album_items(access_token: str, album_id: str) -> ApiResponse[list[
     return ApiResponse[list[Track]](status_code=response.status, data=tracks)
 
 
-def refresh_token(refresh_token: str):
-    # The refresh token contained in the response, can be used to request new tokens. Depending on the grant used to get the initial refresh token,
-    # a refresh token might not be included in each response. When a refresh token is not returned, continue using the existing token.
+async def refresh_token(refresh_token: str) -> ApiResponse[SpotifyTokenResponse] | None:
     url = "https://accounts.spotify.com/api/token"
-    data = {
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "client_id": CLIENT_ID
-    }
+
     headers = {
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/x-www-form-urlencoded",
+        'Authorization': 'Basic ' + encode_to_base64(f"{CLIENT_ID}:{CLIENT_SECRET}")
     }
 
-    response = requests.post(url=url, headers=headers, data=data)
-    if response.status_code == 200:
-        return SpotifyTokenResponse(**response.json())
-    raise HTTPException(status_code=response.status_code, detail=response.text)
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token
+    }
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.post(url=url, data=data) as response:
+            if response.status != 200:
+                return ApiResponse[SpotifyTokenResponse | None](
+                    status_code=response.status,
+                    data=None,
+                    message=await response.text()
+                )
+
+            response_data = await response.json()
+            print(response_data)
+
+            return ApiResponse(
+                status_code=200,
+                data=SpotifyTokenResponse(**response_data)
+            )
