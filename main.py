@@ -1,4 +1,4 @@
-# https://developer.spotify.com/documentation/web-api/tutorials/code-flow
+# https://developer.spotify.com/documentation/seb-api/tutorials/code-flow
 
 from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -64,34 +64,34 @@ async def auth_callback(request: Request):
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: list[WebSocket] = []
+        self.active_connections: dict[str, WebSocket] = {}
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, id: str, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        self.active_connections[id] = websocket
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+    def disconnect(self, id: str):
+        del self.active_connections[id]
 
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
+    async def send_personal_message(self, message: str, id: str):
+        await self.active_connections[id].send_text(message)
 
     async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            await connection.send_text(message)
+        for websocket in self.active_connections.values():
+            await websocket.send_text(message)
 
 
 manager = ConnectionManager()
 
 
-@app.websocket("/ws/token")
-async def token_websocket(websocket: WebSocket):
-    await manager.connect(websocket)
+@app.websocket("/ws/token/{id}")
+async def token_websocket(id: str, websocket: WebSocket):
+    await manager.connect(id, websocket)
     try:
         while True:
             data = await websocket.receive_json()
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        manager.disconnect(id)
         print("client disconnected")
 
 

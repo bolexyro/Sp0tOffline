@@ -30,13 +30,21 @@ class SpotifyImage(BaseModel):
 
 class Playlist(BaseModel):
     id: str
-    images: list[SpotifyImage] | None
     name: str
+    description: str | None = None
+    owner_name: str
+    total_tracks: int
+    images: list[SpotifyImage] | None
 
 
 class Album(BaseModel):
     id: str
     name: str
+    # "album", "single", "compilation"
+    album_type: str
+    total_tracks: int
+    release_date: str
+    artists: list["Artist"]
     images: list["SpotifyImage"]
 
 
@@ -53,10 +61,6 @@ class Track(BaseModel):
 class Artist(BaseModel):
     id: Annotated[str, "Artist spotify id"]
     name: str
-
-
-class PlaylistTrack(BaseModel):
-    pass
 
 
 class LoginResponse(BaseModel):

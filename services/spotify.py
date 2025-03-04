@@ -50,7 +50,8 @@ async def get_user_playlists(access_token: str) -> ApiResponse[list[Playlist]]:
             next_url = data['next']
 
             for playlist in data['items']:
-                playlists.append(Playlist(**playlist))
+                playlists.append(Playlist(id=playlist['id'], images=playlist['images'], description=playlist['description'],
+                                 name=playlist['name'], owner_name=playlist['owner']['display_name'], total_tracks=playlist['tracks']['total']))
 
             while next_url:
                 async with session.get(url=next_url, headers=headers) as response:
@@ -60,9 +61,9 @@ async def get_user_playlists(access_token: str) -> ApiResponse[list[Playlist]]:
                     data = await response.json()
                     next_url = data['next']
                     for playlist in data['items']:
-                        playlists.append(Playlist(**playlist))
+                        playlists.append(Playlist(id=playlist['id'], images=playlist['images'], description=playlist['description'],
+                                                  name=playlist['name'], owner_name=playlist['owner']['display_name'], total_tracks=playlist['tracks']['total']))
 
-    # return [Playlist(**playlist) for playlist in response.json()["items"]]
     return ApiResponse[list[Playlist]](status_code=200, data=playlists)
 
 
@@ -109,7 +110,8 @@ async def get_playlist_items(playlist_id: str, access_token: str) -> ApiResponse
             next_url = data['next']
 
             for track in data['items']:
-                tracks.append(Track(**track['track']))
+                if track['track']:
+                    tracks.append(Track(**track['track']))
 
             while next_url:
                 async with session.get(url=next_url, headers=headers) as response:
